@@ -43,6 +43,7 @@ import com.sequenceiq.cloudbreak.cloud.model.CloudCredential;
 import com.sequenceiq.cloudbreak.cloud.model.CloudInstance;
 import com.sequenceiq.cloudbreak.cloud.model.CloudStack;
 import com.sequenceiq.cloudbreak.cloud.model.Group;
+import com.sequenceiq.cloudbreak.cloud.model.GroupNetwork;
 import com.sequenceiq.cloudbreak.cloud.model.Image;
 import com.sequenceiq.cloudbreak.cloud.model.InstanceAuthentication;
 import com.sequenceiq.cloudbreak.cloud.model.InstanceStatus;
@@ -770,7 +771,8 @@ public class CloudFormationTemplateBuilderTest {
         List<Group> groups = new ArrayList<>();
         Security security = new Security(emptyList(), singletonList("single-sg-id"));
         groups.add(new Group("master", InstanceGroupType.CORE, emptyList(), security, instance,
-                instanceAuthentication, instanceAuthentication.getLoginUserName(), "publickey", ROOT_VOLUME_SIZE, Optional.empty()));
+                instanceAuthentication, instanceAuthentication.getLoginUserName(), "publickey", ROOT_VOLUME_SIZE, Optional.empty(),
+                new GroupNetwork()));
         CloudStack cloudStack = new CloudStack(groups, new Network(new Subnet(CIDR)), image, emptyMap(), emptyMap(), "template",
                 instanceAuthentication, instanceAuthentication.getLoginUserName(), "publicKey", null);
         //WHEN
@@ -799,9 +801,11 @@ public class CloudFormationTemplateBuilderTest {
         List<Group> groups = new ArrayList<>();
         Security security = new Security(emptyList(), singletonList("single-sg-id"));
         groups.add(new Group("gateway", InstanceGroupType.GATEWAY, emptyList(), security, instance,
-                instanceAuthentication, instanceAuthentication.getLoginUserName(), "publickey", ROOT_VOLUME_SIZE, Optional.empty()));
+                instanceAuthentication, instanceAuthentication.getLoginUserName(), "publickey", ROOT_VOLUME_SIZE, Optional.empty(),
+                new GroupNetwork()));
         groups.add(new Group("master", InstanceGroupType.CORE, emptyList(), security, instance,
-                instanceAuthentication, instanceAuthentication.getLoginUserName(), "publickey", ROOT_VOLUME_SIZE, Optional.empty()));
+                instanceAuthentication, instanceAuthentication.getLoginUserName(), "publickey", ROOT_VOLUME_SIZE, Optional.empty(),
+                new GroupNetwork()));
         CloudStack cloudStack = new CloudStack(groups, new Network(new Subnet(CIDR)), image, emptyMap(), emptyMap(), "template",
                 instanceAuthentication, instanceAuthentication.getLoginUserName(), "publicKey", null);
         //WHEN
@@ -830,7 +834,8 @@ public class CloudFormationTemplateBuilderTest {
         List<Group> groups = new ArrayList<>();
         Security security = new Security(emptyList(), List.of("multi-sg-id1", "multi-sg-id2"));
         groups.add(new Group("master", InstanceGroupType.CORE, emptyList(), security, instance,
-                instanceAuthentication, instanceAuthentication.getLoginUserName(), "publickey", ROOT_VOLUME_SIZE, Optional.empty()));
+                instanceAuthentication, instanceAuthentication.getLoginUserName(), "publickey", ROOT_VOLUME_SIZE, Optional.empty(),
+                new GroupNetwork()));
         CloudStack cloudStack = new CloudStack(groups, new Network(new Subnet(CIDR)), image, emptyMap(), emptyMap(), "template",
                 instanceAuthentication, instanceAuthentication.getLoginUserName(), "publicKey", null);
         //WHEN
@@ -863,7 +868,8 @@ public class CloudFormationTemplateBuilderTest {
         spotInstanceTemplate.putParameter(AwsInstanceTemplate.EC2_SPOT_PERCENTAGE, 60);
         CloudInstance spotInstance = new CloudInstance("SOME_ID", spotInstanceTemplate, instanceAuthentication);
         groups.add(new Group("compute", InstanceGroupType.CORE, singletonList(spotInstance), security, spotInstance,
-                instanceAuthentication, instanceAuthentication.getLoginUserName(), "publickey", ROOT_VOLUME_SIZE, Optional.empty()));
+                instanceAuthentication, instanceAuthentication.getLoginUserName(), "publickey", ROOT_VOLUME_SIZE, Optional.empty(),
+                new GroupNetwork()));
         groups.add(createDefaultGroup("gateway", InstanceGroupType.GATEWAY, ROOT_VOLUME_SIZE, security, Optional.empty()));
         CloudStack cloudStack = createDefaultCloudStack(groups, getDefaultCloudStackParameters(), getDefaultCloudStackTags());
 
@@ -900,7 +906,8 @@ public class CloudFormationTemplateBuilderTest {
         spotInstanceTemplate.putParameter(AwsInstanceTemplate.EC2_SPOT_MAX_PRICE, 0.9);
         CloudInstance spotInstance = new CloudInstance("SOME_ID", spotInstanceTemplate, instanceAuthentication);
         groups.add(new Group("compute", InstanceGroupType.CORE, singletonList(spotInstance), security, spotInstance,
-                instanceAuthentication, instanceAuthentication.getLoginUserName(), "publickey", ROOT_VOLUME_SIZE, Optional.empty()));
+                instanceAuthentication, instanceAuthentication.getLoginUserName(), "publickey", ROOT_VOLUME_SIZE, Optional.empty(),
+                new GroupNetwork()));
         groups.add(createDefaultGroup("gateway", InstanceGroupType.GATEWAY, ROOT_VOLUME_SIZE, security, Optional.empty()));
         CloudStack cloudStack = createDefaultCloudStack(groups, getDefaultCloudStackParameters(), getDefaultCloudStackTags());
 
@@ -1377,7 +1384,7 @@ public class CloudFormationTemplateBuilderTest {
     }
 
     private AuthenticatedContext authenticatedContext() {
-        Location location = Location.location(Region.region("region"), AvailabilityZone.availabilityZone("az"));
+        Location location = Location.location(Region.region("region"), AvailabilityZone.availabilityZone("az"), new HashMap<>());
         CloudContext cloudContext = new CloudContext(5L, "name", "platform", "variant",
                 location, USER_ID, WORKSPACE_ID);
         CloudCredential credential = new CloudCredential("crn", null);
@@ -1410,7 +1417,7 @@ public class CloudFormationTemplateBuilderTest {
             Optional<CloudFileSystemView> cloudFileSystemView) {
         return new Group(name, type, singletonList(instance), security, null,
                 instanceAuthentication, instanceAuthentication.getLoginUserName(),
-                instanceAuthentication.getPublicKey(), rootVolumeSize, cloudFileSystemView);
+                instanceAuthentication.getPublicKey(), rootVolumeSize, cloudFileSystemView, new GroupNetwork());
     }
 
     private InstanceTemplate createDefaultInstanceTemplate() {
