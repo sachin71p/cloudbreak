@@ -44,7 +44,7 @@ class MockCrnService {
         String actorCrn = GrpcActorContext.ACTOR_CONTEXT.get().getActorCrn();
         String accountId = Crn.safeFromString(actorCrn).getAccountId();
         LOGGER.info("Ensure correct account id: {}", accountId);
-        if (!INTERNAL_ACCOUNT.equals(accountId)) {
+        if (INTERNAL_ACCOUNT.equals(accountId)) {
             throw Status.INVALID_ARGUMENT.withDescription("This operation cannot be used with internal account id").asRuntimeException();
         }
     }
