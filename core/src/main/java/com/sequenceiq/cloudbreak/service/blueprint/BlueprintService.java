@@ -7,6 +7,7 @@ import static com.sequenceiq.cloudbreak.api.endpoint.v4.common.Status.DELETE_COM
 import static com.sequenceiq.cloudbreak.exception.NotFoundException.notFound;
 
 import java.util.Collection;
+import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -31,7 +32,7 @@ import org.springframework.validation.MapBindingResult;
 
 import com.sequenceiq.authorization.resource.AuthorizationResourceType;
 import com.sequenceiq.authorization.service.OwnerAssignmentService;
-import com.sequenceiq.authorization.service.ResourceBasedCrnProvider;
+import com.sequenceiq.authorization.service.ResourceCrnAndNameProvider;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.dto.NameOrCrn;
 import com.sequenceiq.cloudbreak.auth.ThreadBasedUserCrnProvider;
 import com.sequenceiq.cloudbreak.auth.altus.Crn;
@@ -42,13 +43,13 @@ import com.sequenceiq.cloudbreak.cloud.model.ScaleRecommendation;
 import com.sequenceiq.cloudbreak.cmtemplate.CentralBlueprintParameterQueryService;
 import com.sequenceiq.cloudbreak.cmtemplate.cloudstorage.CmCloudStorageConfigProvider;
 import com.sequenceiq.cloudbreak.cmtemplate.utils.BlueprintUtils;
+import com.sequenceiq.cloudbreak.common.exception.BadRequestException;
 import com.sequenceiq.cloudbreak.common.service.TransactionService;
 import com.sequenceiq.cloudbreak.domain.Blueprint;
 import com.sequenceiq.cloudbreak.domain.projection.BlueprintStatusView;
 import com.sequenceiq.cloudbreak.domain.stack.Stack;
 import com.sequenceiq.cloudbreak.domain.stack.cluster.Cluster;
 import com.sequenceiq.cloudbreak.domain.view.BlueprintView;
-import com.sequenceiq.cloudbreak.common.exception.BadRequestException;
 import com.sequenceiq.cloudbreak.exception.NotFoundException;
 import com.sequenceiq.cloudbreak.init.blueprint.BlueprintLoaderService;
 import com.sequenceiq.cloudbreak.logger.MDCBuilder;
@@ -67,7 +68,7 @@ import com.sequenceiq.common.api.cloudstorage.query.ConfigQueryEntry;
 import com.sequenceiq.common.api.type.CdpResourceType;
 
 @Service
-public class BlueprintService extends AbstractWorkspaceAwareResourceService<Blueprint> implements ResourceBasedCrnProvider {
+public class BlueprintService extends AbstractWorkspaceAwareResourceService<Blueprint> implements ResourceCrnAndNameProvider {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(BlueprintService.class);
 
@@ -446,5 +447,18 @@ public class BlueprintService extends AbstractWorkspaceAwareResourceService<Blue
 
     public BlueprintStatusView getStatusViewByResourceCrn(String resourceCrn) {
         return blueprintRepository.findViewByResourceCrn(resourceCrn);
+    }
+
+    @Override
+    public Map<String, Optional<String>> getNamesByCrns(Collection<String> crns) {
+        Map<String, Optional<String>> result = new HashMap<>();
+        blueprintRepository.findResourceNamesByCrnAndAccountId(crns, ThreadBasedUserCrnProvider.getAccountId()).stream()
+                .forEach(nameAndCrn -> result.put(nameAndCrn.getCrn(), Optional.ofNullable(nameAndCrn.getName())));
+        return result;
+    }
+
+    @Override
+    public EnumSet<ResourceType> getCrnTypes() {
+        return EnumSet.of(ResourceType.CLUSTER_TEMPLATE);
     }
 }
