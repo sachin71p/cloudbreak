@@ -11,6 +11,7 @@ import org.springframework.stereotype.Component;
 
 import com.sequenceiq.cloudbreak.api.endpoint.v4.stacks.base.parameter.stack.StackV4ParameterBase;
 import com.sequenceiq.cloudbreak.common.mappable.CloudPlatform;
+import com.sequenceiq.common.api.type.ServiceEndpointCreation;
 import com.sequenceiq.common.model.FileSystemType;
 import com.sequenceiq.distrox.api.v1.distrox.model.instancegroup.template.InstanceTemplateV1Request;
 import com.sequenceiq.it.cloudbreak.CloudbreakClient;
@@ -184,6 +185,11 @@ public class CloudProviderProxy implements CloudProvider {
     @Override
     public NetworkV4TestDto network(NetworkV4TestDto network) {
         return getDelegate(network).network(network);
+    }
+
+    @Override
+    public ServiceEndpointCreation serviceEndpoint() {
+        return delegate.serviceEndpoint();
     }
 
     @Override
