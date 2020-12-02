@@ -1,5 +1,6 @@
 package com.sequenceiq.cloudbreak.template.views;
 
+import java.util.Objects;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -24,9 +25,7 @@ public class RdsView {
 
     private static final int DATABASE_GROUP_INDEX = 3;
 
-    private static final String SSL_CERTIFICATE_FILE = "/hadoopfs/fs1/database-cacerts/certs.pem";
-
-    private static final String SSL_OPTIONS = "sslmode=verify-full&sslrootcert=" + SSL_CERTIFICATE_FILE;
+    private static final String SSL_OPTIONS_WITHOUT_CERTIFICATE_FILE = "sslmode=verify-full&sslrootcert=";
 
     private final String connectionURL;
 
@@ -59,6 +58,12 @@ public class RdsView {
     private final RdsViewDialect rdsViewDialect;
 
     public RdsView(RDSConfig rdsConfig) {
+        this(rdsConfig, "");
+    }
+
+    public RdsView(RDSConfig rdsConfig, String sslCertificateFile) {
+        // Note: any value is valid for sslCertificateFile for sake of backward compatibility.
+        this.sslCertificateFile = Objects.requireNonNullElse(sslCertificateFile, "");
         useSsl = RdsSslMode.isEnabled(rdsConfig.getSslMode());
         if (useSsl) {
             String configConnectionURL = rdsConfig.getConnectionURL();
@@ -69,12 +74,11 @@ public class RdsView {
             } else {
                 sb.append('?');
             }
-            sb.append(SSL_OPTIONS);
+            sb.append(SSL_OPTIONS_WITHOUT_CERTIFICATE_FILE);
+            sb.append(this.sslCertificateFile);
             connectionURL = sb.toString();
-            sslCertificateFile = SSL_CERTIFICATE_FILE;
         } else {
             connectionURL = rdsConfig.getConnectionURL();
-            sslCertificateFile = "";
         }
 
         connectionUserName = rdsConfig.getConnectionUserName();
