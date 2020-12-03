@@ -27,11 +27,13 @@ import com.sequenceiq.cloudbreak.cloud.aws.AwsTaggingService;
 import com.sequenceiq.cloudbreak.cloud.aws.CloudFormationStackUtil;
 import com.sequenceiq.cloudbreak.cloud.aws.client.AmazonAutoScalingRetryClient;
 import com.sequenceiq.cloudbreak.cloud.aws.client.AmazonCloudFormationRetryClient;
+import com.sequenceiq.cloudbreak.cloud.aws.loadbalancer.AwsLoadBalancerScheme;
 import com.sequenceiq.cloudbreak.cloud.aws.view.AwsCredentialView;
 import com.sequenceiq.cloudbreak.cloud.aws.view.AwsNetworkView;
 import com.sequenceiq.cloudbreak.cloud.context.AuthenticatedContext;
 import com.sequenceiq.cloudbreak.cloud.exception.CloudConnectorException;
 import com.sequenceiq.cloudbreak.cloud.model.CloudInstance;
+import com.sequenceiq.cloudbreak.cloud.model.CloudLoadBalancer;
 import com.sequenceiq.cloudbreak.cloud.model.CloudResource;
 import com.sequenceiq.cloudbreak.cloud.model.CloudResourceStatus;
 import com.sequenceiq.cloudbreak.cloud.model.CloudStack;
@@ -110,6 +112,11 @@ public class AwsUpscaleService {
         awsTaggingService.tagRootVolumes(ac, amazonEC2Client, instances, stack.getTags());
 
         awsCloudWatchService.addCloudWatchAlarmsForSystemFailures(instances, regionName, credentialView);
+
+        for (CloudLoadBalancer loadBalancer : stack.getLoadBalancers()) {
+            cfStackUtil.addLoadBalancerTargets(ac, regionName, loadBalancer.getPortToTargetGroupMapping(),
+                AwsLoadBalancerScheme.valueOf(loadBalancer.getType().name()), instances);
+        }
 
         return singletonList(new CloudResourceStatus(cfStackUtil.getCloudFormationStackResource(resources), ResourceStatus.UPDATED));
     }

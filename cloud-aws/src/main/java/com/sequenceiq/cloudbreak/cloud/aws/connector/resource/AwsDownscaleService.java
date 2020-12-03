@@ -29,11 +29,13 @@ import com.amazonaws.waiters.Waiter;
 import com.sequenceiq.cloudbreak.cloud.aws.AwsClient;
 import com.sequenceiq.cloudbreak.cloud.aws.CloudFormationStackUtil;
 import com.sequenceiq.cloudbreak.cloud.aws.client.AmazonAutoScalingRetryClient;
+import com.sequenceiq.cloudbreak.cloud.aws.loadbalancer.AwsLoadBalancerScheme;
 import com.sequenceiq.cloudbreak.cloud.aws.scheduler.StackCancellationCheck;
 import com.sequenceiq.cloudbreak.cloud.aws.view.AuthenticatedContextView;
 import com.sequenceiq.cloudbreak.cloud.aws.view.AwsCredentialView;
 import com.sequenceiq.cloudbreak.cloud.context.AuthenticatedContext;
 import com.sequenceiq.cloudbreak.cloud.model.CloudInstance;
+import com.sequenceiq.cloudbreak.cloud.model.CloudLoadBalancer;
 import com.sequenceiq.cloudbreak.cloud.model.CloudResource;
 import com.sequenceiq.cloudbreak.cloud.model.CloudResourceStatus;
 import com.sequenceiq.cloudbreak.cloud.model.CloudStack;
@@ -62,8 +64,7 @@ public class AwsDownscaleService {
     @Inject
     private AwsCloudWatchService awsCloudWatchService;
 
-    public List<CloudResourceStatus> downscale(AuthenticatedContext auth, CloudStack stack, List<CloudResource> resources, List<CloudInstance> vms,
-            Object resourcesToRemove) {
+    public List<CloudResourceStatus> downscale(AuthenticatedContext auth, CloudStack stack, List<CloudResource> resources, List<CloudInstance> vms) {
         if (!vms.isEmpty()) {
             List<String> instanceIds = new ArrayList<>();
             for (CloudInstance vm : vms) {
@@ -101,6 +102,11 @@ public class AwsDownscaleService {
                 amazonASClient.updateAutoScalingGroup(updateDesiredAndMax);
             } catch (AmazonServiceException e) {
                 LOGGER.warn("Failed to update asGroupName: {}, error: {}", asGroupName, e.getErrorMessage(), e);
+            }
+
+            for (CloudLoadBalancer loadBalancer : stack.getLoadBalancers()) {
+                cfStackUtil.removeLoadBalancerTargets(auth, regionName, loadBalancer.getPortToTargetGroupMapping(),
+                    AwsLoadBalancerScheme.valueOf(loadBalancer.getType().name()), resourcesToDownscale);
             }
 
         }
