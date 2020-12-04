@@ -1,15 +1,21 @@
 package com.sequenceiq.cloudbreak.core.bootstrap.service.host;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.io.IOException;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 import org.junit.Rule;
 import org.junit.Test;
@@ -25,13 +31,19 @@ import com.sequenceiq.cloudbreak.auth.altus.GrpcUmsClient;
 import com.sequenceiq.cloudbreak.auth.altus.VirtualGroupService;
 import com.sequenceiq.cloudbreak.cloud.model.ClouderaManagerRepo;
 import com.sequenceiq.cloudbreak.cluster.service.ClusterComponentConfigProvider;
+import com.sequenceiq.cloudbreak.cmtemplate.CmTemplateProcessor;
+import com.sequenceiq.cloudbreak.cmtemplate.CmTemplateProcessorFactory;
+import com.sequenceiq.cloudbreak.cmtemplate.configproviders.yarn.YarnConstants;
+import com.sequenceiq.cloudbreak.cmtemplate.configproviders.yarn.YarnRoles;
 import com.sequenceiq.cloudbreak.core.bootstrap.service.container.postgres.PostgresConfigService;
 import com.sequenceiq.cloudbreak.core.bootstrap.service.host.decorator.TelemetryDecorator;
+import com.sequenceiq.cloudbreak.domain.Blueprint;
 import com.sequenceiq.cloudbreak.domain.stack.Stack;
 import com.sequenceiq.cloudbreak.domain.stack.cluster.Cluster;
 import com.sequenceiq.cloudbreak.kerberos.KerberosConfigService;
 import com.sequenceiq.cloudbreak.ldap.LdapConfigService;
 import com.sequenceiq.cloudbreak.orchestrator.exception.CloudbreakOrchestratorFailedException;
+import com.sequenceiq.cloudbreak.orchestrator.model.Node;
 import com.sequenceiq.cloudbreak.orchestrator.model.SaltPillarProperties;
 import com.sequenceiq.cloudbreak.service.ComponentConfigProviderService;
 import com.sequenceiq.cloudbreak.service.DefaultClouderaManagerRepoService;
@@ -49,6 +61,8 @@ import com.sequenceiq.cloudbreak.service.stack.InstanceMetaDataService;
 import com.sequenceiq.cloudbreak.service.stack.StackService;
 import com.sequenceiq.cloudbreak.service.stack.flow.MountDisks;
 import com.sequenceiq.cloudbreak.template.kerberos.KerberosDetailService;
+import com.sequenceiq.cloudbreak.template.model.ServiceAttributes;
+import com.sequenceiq.cloudbreak.template.model.ServiceComponent;
 import com.sequenceiq.cloudbreak.util.FileReaderUtils;
 import com.sequenceiq.cloudbreak.util.StackUtil;
 
@@ -145,6 +159,9 @@ public class ClusterHostServiceRunnerTest {
     private ClusterHostServiceRunner underTest;
 
     @Mock
+    private CmTemplateProcessorFactory cmTemplateProcessorFactory;
+
+    @Mock
     private Stack stack;
 
     @Mock
@@ -219,5 +236,76 @@ public class ClusterHostServiceRunnerTest {
         assertEquals("https://archive.cloudera.com/cm/7.2.0/", ((ClouderaManagerRepo) values.get("repo")).getBaseUrl());
         assertNull(values.get("paywall_username"));
         assertNull(values.get("paywall_password"));
+    }
+
+    @Test
+    public void testAddHostAttributes() {
+
+        Blueprint blueprint = mock(Blueprint.class);
+        when(stack.getCluster()).thenReturn(cluster);
+        when(cluster.getBlueprint()).thenReturn(blueprint);
+        when(blueprint.getBlueprintText()).thenReturn("");
+
+        Map<String, Map<String, ServiceAttributes>> yarnAttrs = new HashMap<>();
+        yarnAttrs.put("hg3",
+                Collections.singletonMap(
+                        YarnRoles.YARN,
+                        new ServiceAttributes(ServiceComponent.of(YarnRoles.YARN, YarnRoles.NODEMANAGER),
+                                Collections.singletonMap(YarnConstants.ATTRIBUTE_NAME_NODE_INSTANCE_TYPE,
+                                        YarnConstants.ATTRIBUTE_NODE_INSTANCE_TYPE_COMPUTE))));
+
+
+        CmTemplateProcessor blueprintTextProcessor = mock(CmTemplateProcessor.class);
+        when(blueprintTextProcessor.getHostGroupBasedServiceAttributes()).thenReturn(yarnAttrs);
+
+        when(cmTemplateProcessorFactory.get(any(String.class))).thenReturn(blueprintTextProcessor);
+
+        Set<Node> nodes = new HashSet<>();
+        nodes.add(new Node("privateIp", "publicIp", "instanceId", "instanceType", "fqdn1", "hg1"));
+        nodes.add(new Node("privateIp", "publicIp", "instanceId", "instanceType", "fqdn2", "domain", "hg2"));
+        nodes.add(new Node("privateIp", "publicIp", "instanceId", "instanceType", "fqdn3", "domain", "hg3"));
+        nodes.add(new Node("privateIp", "publicIp", "instanceId", "instanceType", "fqdn4", null));
+
+        Map<String, SaltPillarProperties> pillar = new HashMap<>();
+        underTest.addHostAttributes(stack, pillar, nodes);
+
+        SaltPillarProperties resultPillar = pillar.get("hostattrs");
+        assertEquals("/nodes/hostattrs.sls", resultPillar.getPath());
+        Map<String, Object> props = resultPillar.getProperties();
+        Map<String, Object> values = (Map<String, Object>) props.get("hostattrs");
+        assertEquals(4, values.size());
+        assertNotNull(values.get("fqdn1"));
+        assertNotNull(values.get("fqdn2"));
+        assertNotNull(values.get("fqdn3"));
+        assertNotNull(values.get("fqdn4"));
+
+        Map<String, Object> nodeValue;
+
+        Map<String, Map<String, String>> attrs = null;
+        nodeValue = (Map<String, Object>) values.get("fqdn1");
+        assertEquals(2, nodeValue.size());
+        assertEquals("hg1", nodeValue.get("hostGroup"));
+        attrs  = (Map<String, Map<String, String>>) nodeValue.get("attributes");
+        assertEquals(0, attrs.size());
+
+        nodeValue = (Map<String, Object>) values.get("fqdn2");
+        assertEquals(2, nodeValue.size());
+        assertEquals("hg2", nodeValue.get("hostGroup"));
+        attrs  = (Map<String, Map<String, String>>) nodeValue.get("attributes");
+        assertEquals(0, attrs.size());
+
+        nodeValue = (Map<String, Object>) values.get("fqdn3");
+        assertEquals(2, nodeValue.size());
+        assertEquals("hg3", nodeValue.get("hostGroup"));
+        attrs  = (Map<String, Map<String, String>>) nodeValue.get("attributes");
+        assertEquals(1, attrs.size());
+        assertEquals(1, attrs.get(YarnRoles.YARN).size());
+        assertEquals(YarnConstants.ATTRIBUTE_NAME_NODE_INSTANCE_TYPE, attrs.get(YarnRoles.YARN).entrySet().iterator().next().getKey());
+        assertEquals(YarnConstants.ATTRIBUTE_NODE_INSTANCE_TYPE_COMPUTE, attrs.get(YarnRoles.YARN).entrySet().iterator().next().getValue());
+
+        nodeValue = (Map<String, Object>) values.get("fqdn4");
+        assertEquals(1, nodeValue.size());
+        attrs  = (Map<String, Map<String, String>>) nodeValue.get("attributes");
+        assertEquals(0, attrs.size());
     }
 }

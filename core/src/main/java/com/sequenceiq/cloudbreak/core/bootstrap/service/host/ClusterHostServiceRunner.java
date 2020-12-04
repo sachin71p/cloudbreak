@@ -36,6 +36,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.CollectionUtils;
 
 import com.cloudera.thunderhead.service.usermanagement.UserManagementProto.Account;
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.Lists;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.common.ExecutorType;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.database.base.DatabaseType;
@@ -56,6 +57,7 @@ import com.sequenceiq.cloudbreak.cloud.scheduler.CancellationException;
 import com.sequenceiq.cloudbreak.cluster.api.ClusterPreCreationApi;
 import com.sequenceiq.cloudbreak.cluster.service.ClusterComponentConfigProvider;
 import com.sequenceiq.cloudbreak.cmtemplate.CMRepositoryVersionUtil;
+import com.sequenceiq.cloudbreak.cmtemplate.CmTemplateProcessorFactory;
 import com.sequenceiq.cloudbreak.common.exception.CloudbreakServiceException;
 import com.sequenceiq.cloudbreak.common.json.Json;
 import com.sequenceiq.cloudbreak.core.bootstrap.service.container.postgres.PostgresConfigService;
@@ -100,6 +102,8 @@ import com.sequenceiq.cloudbreak.service.stack.InstanceMetaDataService;
 import com.sequenceiq.cloudbreak.service.stack.StackService;
 import com.sequenceiq.cloudbreak.service.stack.flow.MountDisks;
 import com.sequenceiq.cloudbreak.template.kerberos.KerberosDetailService;
+import com.sequenceiq.cloudbreak.template.model.ServiceAttributes;
+import com.sequenceiq.cloudbreak.template.processor.BlueprintTextProcessor;
 import com.sequenceiq.cloudbreak.template.views.RdsView;
 import com.sequenceiq.cloudbreak.type.KerberosType;
 import com.sequenceiq.cloudbreak.util.StackUtil;
@@ -205,6 +209,9 @@ public class ClusterHostServiceRunner {
     @Inject
     private CMLicenseParser cmLicenseParser;
 
+    @Inject
+    private CmTemplateProcessorFactory cmTemplateProcessorFactory;
+
     public void runClusterServices(@Nonnull Stack stack, @Nonnull Cluster cluster, List<String> candidateAddresses) {
         try {
             Set<Node> nodes = stackUtil.collectReachableNodes(stack);
@@ -293,6 +300,7 @@ public class ClusterHostServiceRunner {
         KerberosConfig kerberosConfig = kerberosConfigService.get(stack.getEnvironmentCrn(), stack.getName()).orElse(null);
         saveCustomNameservers(stack, kerberosConfig, servicePillar);
         addKerberosConfig(servicePillar, kerberosConfig);
+        addHostAttributes(stack, servicePillar, nodes);
         servicePillar.put("discovery", new SaltPillarProperties("/discovery/init.sls", singletonMap("platform", stack.cloudPlatform())));
         String virtualGroupsEnvironmentCrn = environmentConfigProvider.getParentEnvironmentCrn(stack.getEnvironmentCrn());
         boolean deployedInChildEnvironment = !virtualGroupsEnvironmentCrn.equals(stack.getEnvironmentCrn());
@@ -321,6 +329,26 @@ public class ClusterHostServiceRunner {
         decoratePillarWithJdbcConnectors(cluster, servicePillar);
 
         return new SaltConfig(servicePillar, grainPropertiesService.createGrainProperties(gatewayConfigs, cluster, nodes));
+    }
+
+    @VisibleForTesting
+    void addHostAttributes(Stack stack, Map<String, SaltPillarProperties> servicePillar, Set<Node> nodes) {
+        BlueprintTextProcessor blueprintTextProcessor = cmTemplateProcessorFactory.get(stack.getCluster().getBlueprint().getBlueprintText());
+        Map<String, Map<String, ServiceAttributes>> serviceAttributes = blueprintTextProcessor.getHostGroupBasedServiceAttributes();
+
+        Map<String, Map<String, Object>> attributes = new HashMap<>();
+        for (Node node : nodes) {
+            Map<String, Map<String, String>> hgAttributes = getAttributesForHostGroup(node.getHostGroup(), serviceAttributes);
+            Map<String, Object> hostAttributes = new HashMap<>();
+
+            hostAttributes.put("attributes", hgAttributes);
+
+            if (node.getHostGroup() != null) {
+                hostAttributes.put("hostGroup", node.getHostGroup());
+            }
+            attributes.put(node.getHostname(), hostAttributes);
+        }
+        servicePillar.put("hostattrs", new SaltPillarProperties("/nodes/hostattrs.sls", singletonMap("hostattrs", attributes)));
     }
 
     private void addKerberosConfig(Map<String, SaltPillarProperties> servicePillar, KerberosConfig kerberosConfig) throws IOException {
@@ -743,5 +771,15 @@ public class ClusterHostServiceRunner {
                 .filter(Objects::nonNull)
                 .flatMap(Collection::stream)
                 .collect(Collectors.toList());
+    }
+
+    private Map<String, Map<String, String>> getAttributesForHostGroup(String hostGroup, Map<String, Map<String, ServiceAttributes>> serviceAttributes) {
+        Map<String, Map<String, String>> hgAttributes = Optional.ofNullable(serviceAttributes.get(hostGroup)).orElse(Map.of())
+                .entrySet().stream()
+                .collect(Collectors.toMap(
+                        Map.Entry::getKey,
+                        v -> v.getValue().getAttributes()));
+        LOGGER.debug("Attributes for hostGroup={}: [{}]", hostGroup, hgAttributes);
+        return hgAttributes;
     }
 }
